@@ -1,18 +1,13 @@
 #!/usr/bin/env python3
-# from: https://github.com/yk/huggingface-nlp-demo/blob/master/demo.py
 
 from absl import app, flags, logging
+
 
 import torch as th
 import pytorch_lightning as pl
 
 import nlp
 import transformers
-
-import os
-from pathlib import Path
-from datetime import datetime
-import numpy as np
 
 flags.DEFINE_boolean('debug', False, '')
 flags.DEFINE_integer('epochs', 10, '')
@@ -22,7 +17,9 @@ flags.DEFINE_float('momentum', .9, '')
 flags.DEFINE_string('model', 'bert-base-uncased', '')
 flags.DEFINE_integer('seq_length', 32, '')
 flags.DEFINE_integer('percent', 5, '')
-flags.DEFINE_string('dataset', 'imdb', '')
+
+FLAGS = flags.FLAGS
+
 
 class IMDBSentimentClassifier(pl.LightningModule):
     def __init__(self):
@@ -41,14 +38,12 @@ class IMDBSentimentClassifier(pl.LightningModule):
             return x
 
         def _prepare_ds(split):
-            ds = nlp.load_dataset(FLAGS.dataset, split=split)  
+            ds = nlp.load_dataset('imdb', split=f'{split}[:{FLAGS.batch_size if FLAGS.debug else f"{FLAGS.percent}%"}]')
             ds = ds.map(_tokenize, batched=True)
             ds.set_format(type='torch', columns=['input_ids', 'label'])
             return ds
 
-        self.train_ds, self.test_ds, self.val_ds = map(_prepare_ds, ('train', 
-                                                                     'test[:25%]+test[75%:]', 
-                                                                     'test[25%:75%]'))
+        self.train_ds, self.test_ds = map(_prepare_ds, ('train', 'test'))
 
     def forward(self, input_ids):
         mask = (input_ids != 0).float()
@@ -60,15 +55,6 @@ class IMDBSentimentClassifier(pl.LightningModule):
         loss = self.loss(logits, batch['label']).mean()
         return {'loss': loss, 'log': {'train_loss': loss}}
 
-    def train_dataloader(self):
-        print(f"\nloading train data with shape: {self.train_ds.shape} and schema: {self.train_ds.schema}\n")        
-        return th.utils.data.DataLoader(
-                self.train_ds,
-                batch_size=FLAGS.batch_size,
-                drop_last=True,
-                shuffle=True,
-                )
-
     def validation_step(self, batch, batch_idx):
         logits = self.forward(batch['input_ids'])
         loss = self.loss(logits, batch['label'])
@@ -79,39 +65,22 @@ class IMDBSentimentClassifier(pl.LightningModule):
         loss = th.cat([o['loss'] for o in outputs], 0).mean()
         acc = th.cat([o['acc'] for o in outputs], 0).mean()
         out = {'val_loss': loss, 'val_acc': acc}
-        print(f'val loss: {loss} - val acc:{acc}')                
         return {**out, 'log': out}
+
+    def train_dataloader(self):
+        return th.utils.data.DataLoader(
+                self.train_ds,
+                batch_size=FLAGS.batch_size,
+                drop_last=True,
+                shuffle=True,
+                )
 
     def val_dataloader(self):
-        print(f"\nloading validation data with shape: {self.val_ds.shape} and schema: {self.val_ds.schema}\n")
-        return th.utils.data.DataLoader(self.val_ds,
-                                        batch_size=FLAGS.batch_size,
-                                        drop_last=False,
-                                        shuffle=False,
-                                        )
-
-
-    def test_step(self, batch, batch_idx):
-        logits = self.forward(batch['input_ids'])
-        loss = self.loss(logits, batch['label'])
-        acc = (logits.argmax(-1) == batch['label']).float()
-        return {'test_loss': loss, 'test_acc': acc}
-
-
-    def test_epoch_end(self, outputs):
-        loss = th.cat([o['test_loss'] for o in outputs], 0).mean()
-        acc = th.cat([o['test_acc'] for o in outputs], 0).mean()
-        out = {'test_loss': loss, 'test_acc': acc}
-        print(f'test loss: {loss} - test acc:{acc}')        
-        return {**out, 'log': out}
-
-    def test_dataloader(self):
-        print(f"\nloading test data with shape: {self.test_ds.shape} and schema: {self.test_ds.schema}\n")        
         return th.utils.data.DataLoader(
                 self.test_ds,
                 batch_size=FLAGS.batch_size,
                 drop_last=False,
-                shuffle=False,
+                shuffle=True,
                 )
 
     def configure_optimizers(self):
@@ -129,16 +98,9 @@ def main(_):
         gpus=(1 if th.cuda.is_available() else 0),
         max_epochs=FLAGS.epochs,
         fast_dev_run=FLAGS.debug,
-        logger=pl.loggers.TensorBoardLogger('logs/', name='imdb', version=datetime.now().strftime("%Y%m%d-%H%M%S")),
+        logger=pl.loggers.TensorBoardLogger('logs/', name='imdb', version=0),
     )
     trainer.fit(model)
-    trainer.test()
-
-
-FLAGS = flags.FLAGS
-
-if not Path('logs').exists():
-    os.mkdir('logs')
 
 
 if __name__ == '__main__':

@@ -25,7 +25,7 @@ model.compile(optimizer=optimizer, loss=loss, metrics=[metric])
 
 # Train and evaluate using tf.keras.Model.fit()
 history = model.fit(train_dataset, epochs=1, steps_per_epoch=115,
-                    validation_data=valid_dataset, validation_steps=50)
+                    validation_data=valid_dataset, validation_steps=7)
 
 # Load the TensorFlow model in PyTorch for inspection
 model.save_pretrained('models/glue')
