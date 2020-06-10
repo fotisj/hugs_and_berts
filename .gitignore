@@ -1,0 +1,12 @@
+aclImdb/
+aclImdb-small/
+bert_base_uncased/
+logs/
+models/
+
+*.txt
+*.bak
+*.pyc
+
+launch.json
+settings.json
