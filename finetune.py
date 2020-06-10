@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
+# based on: 
 # from: https://github.com/yk/huggingface-nlp-demo/blob/master/demo.py
 
 from absl import app, flags, logging
 
-import torch as th
+import torch
 import pytorch_lightning as pl
 
 import nlp
@@ -15,23 +16,24 @@ from datetime import datetime
 import numpy as np
 
 flags.DEFINE_boolean('debug', False, '')
-flags.DEFINE_integer('epochs', 10, '')
-flags.DEFINE_integer('batch_size', 8, '')
+flags.DEFINE_integer('epochs', 5, '')
+flags.DEFINE_integer('batch_size', 16, '')
 flags.DEFINE_float('lr', 1e-2, '')
 flags.DEFINE_float('momentum', .9, '')
-flags.DEFINE_string('model', 'bert-base-uncased', '')
+flags.DEFINE_string('model', 'distilbert-base-cased', '')
+flags.DEFINE_string('tokenizer', 'bert-base-cased', '')
 flags.DEFINE_integer('seq_length', 32, '')
-flags.DEFINE_integer('percent', 5, '')
 flags.DEFINE_string('dataset', 'imdb', '')
+flags.DEFINE_string('project_name', 'imdb2', 'project name, used to name the subdir for tb logger')
 
-class IMDBSentimentClassifier(pl.LightningModule):
+class Classifier(pl.LightningModule):
     def __init__(self):
         super().__init__()
-        self.model = transformers.BertForSequenceClassification.from_pretrained(FLAGS.model)
-        self.loss = th.nn.CrossEntropyLoss(reduction='none')
+        self.model = transformers.DistilBertForSequenceClassification.from_pretrained(FLAGS.model)
+        self.loss = torch.nn.CrossEntropyLoss(reduction='none')
 
     def prepare_data(self):
-        tokenizer = transformers.BertTokenizer.from_pretrained(FLAGS.model)
+        tokenizer = transformers.BertTokenizer.from_pretrained(FLAGS.tokenizer)
 
         def _tokenize(x):
             x['input_ids'] = tokenizer.batch_encode_plus(
@@ -62,7 +64,7 @@ class IMDBSentimentClassifier(pl.LightningModule):
 
     def train_dataloader(self):
         print(f"\nloading train data with shape: {self.train_ds.shape} and schema: {self.train_ds.schema}\n")        
-        return th.utils.data.DataLoader(
+        return torch.utils.data.DataLoader(
                 self.train_ds,
                 batch_size=FLAGS.batch_size,
                 drop_last=True,
@@ -76,15 +78,15 @@ class IMDBSentimentClassifier(pl.LightningModule):
         return {'loss': loss, 'acc': acc}
 
     def validation_epoch_end(self, outputs):
-        loss = th.cat([o['loss'] for o in outputs], 0).mean()
-        acc = th.cat([o['acc'] for o in outputs], 0).mean()
+        loss = torch.cat([o['loss'] for o in outputs], 0).mean()
+        acc = torch.cat([o['acc'] for o in outputs], 0).mean()
         out = {'val_loss': loss, 'val_acc': acc}
-        print(f'val loss: {loss} - val acc:{acc}')                
+        print(f'\nval loss: {loss} - val acc:{acc}\n')                
         return {**out, 'log': out}
 
     def val_dataloader(self):
         print(f"\nloading validation data with shape: {self.val_ds.shape} and schema: {self.val_ds.schema}\n")
-        return th.utils.data.DataLoader(self.val_ds,
+        return torch.utils.data.DataLoader(self.val_ds,
                                         batch_size=FLAGS.batch_size,
                                         drop_last=False,
                                         shuffle=False,
@@ -99,15 +101,15 @@ class IMDBSentimentClassifier(pl.LightningModule):
 
 
     def test_epoch_end(self, outputs):
-        loss = th.cat([o['test_loss'] for o in outputs], 0).mean()
-        acc = th.cat([o['test_acc'] for o in outputs], 0).mean()
+        loss = torch.cat([o['test_loss'] for o in outputs], 0).mean()
+        acc = torch.cat([o['test_acc'] for o in outputs], 0).mean()
         out = {'test_loss': loss, 'test_acc': acc}
-        print(f'test loss: {loss} - test acc:{acc}')        
+        print(f'\ntest loss: {loss} - test acc:{acc}\n')        
         return {**out, 'log': out}
 
     def test_dataloader(self):
         print(f"\nloading test data with shape: {self.test_ds.shape} and schema: {self.test_ds.schema}\n")        
-        return th.utils.data.DataLoader(
+        return torch.utils.data.DataLoader(
                 self.test_ds,
                 batch_size=FLAGS.batch_size,
                 drop_last=False,
@@ -115,7 +117,7 @@ class IMDBSentimentClassifier(pl.LightningModule):
                 )
 
     def configure_optimizers(self):
-        return th.optim.SGD(
+        return torch.optim.SGD(
             self.parameters(),
             lr=FLAGS.lr,
             momentum=FLAGS.momentum,
@@ -123,13 +125,13 @@ class IMDBSentimentClassifier(pl.LightningModule):
 
 
 def main(_):
-    model = IMDBSentimentClassifier()
+    model = Classifier()
     trainer = pl.Trainer(
         default_root_dir='logs',
-        gpus=(1 if th.cuda.is_available() else 0),
+        gpus=(1 if torch.cuda.is_available() else 0),
         max_epochs=FLAGS.epochs,
         fast_dev_run=FLAGS.debug,
-        logger=pl.loggers.TensorBoardLogger('logs/', name='imdb', version=datetime.now().strftime("%Y%m%d-%H%M%S")),
+        logger=pl.loggers.TensorBoardLogger('logs/', name=FLAGS.project_name, version=datetime.now().strftime("%Y%m%d-%H%M%S")),
     )
     trainer.fit(model)
     trainer.test()
