@@ -16,20 +16,20 @@ from datetime import datetime
 import numpy as np
 
 flags.DEFINE_boolean('debug', False, '')
-flags.DEFINE_integer('epochs', 5, '')
+flags.DEFINE_integer('epochs', 10, '')
 flags.DEFINE_integer('batch_size', 16, '')
 flags.DEFINE_float('lr', 1e-2, '')
 flags.DEFINE_float('momentum', .9, '')
-flags.DEFINE_string('model', 'distilbert-base-cased', '')
+flags.DEFINE_string('model', 'bert-base-cased', '')  #distilbert-base-cased
 flags.DEFINE_string('tokenizer', 'bert-base-cased', '')
-flags.DEFINE_integer('seq_length', 32, '')
+flags.DEFINE_integer('seq_length', 128, '')
 flags.DEFINE_string('dataset', 'imdb', '')
-flags.DEFINE_string('project_name', 'imdb2', 'project name, used to name the subdir for tb logger')
+flags.DEFINE_string('project_name', 'imdb_3', 'project name, used to name the subdir for tb logger')
 
 class Classifier(pl.LightningModule):
     def __init__(self):
         super().__init__()
-        self.model = transformers.DistilBertForSequenceClassification.from_pretrained(FLAGS.model)
+        self.model = transformers.BertForSequenceClassification.from_pretrained(FLAGS.model)
         self.loss = torch.nn.CrossEntropyLoss(reduction='none')
 
     def prepare_data(self):
@@ -81,7 +81,7 @@ class Classifier(pl.LightningModule):
         loss = torch.cat([o['loss'] for o in outputs], 0).mean()
         acc = torch.cat([o['acc'] for o in outputs], 0).mean()
         out = {'val_loss': loss, 'val_acc': acc}
-        print(f'\nval loss: {loss} - val acc:{acc}\n')                
+        print(f'\nval loss: {loss} - val acc:{acc}  \n')                
         return {**out, 'log': out}
 
     def val_dataloader(self):
@@ -104,7 +104,7 @@ class Classifier(pl.LightningModule):
         loss = torch.cat([o['test_loss'] for o in outputs], 0).mean()
         acc = torch.cat([o['test_acc'] for o in outputs], 0).mean()
         out = {'test_loss': loss, 'test_acc': acc}
-        print(f'\ntest loss: {loss} - test acc:{acc}\n')        
+        print(f'\ntest loss: {loss} - test acc:{acc}  \n')        
         return {**out, 'log': out}
 
     def test_dataloader(self):
